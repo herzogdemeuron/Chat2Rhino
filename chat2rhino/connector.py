@@ -186,7 +186,8 @@ class Connector(object):
         try:
             for document in self.bindings.chats_to_open():
                 # The connect page builds the same link for the first chat (relay connect.js).
-                line = "{0} is connected to this chat.".format(document)
+                # The line break puts the cursor on a new line for the user's own text.
+                line = "{0} is connected to this chat.\n".format(document)
                 self._open_page("{0}/?{1}".format(settings.CHAT_URL, urllib.parse.urlencode(
                     {"models": settings.MODEL_ID, "q": line})))
                 LOG.info("Opened a new chat for %s", document)

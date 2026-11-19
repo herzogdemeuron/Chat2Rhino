@@ -231,7 +231,7 @@ class BindingTests(StateDir):
         self.connector.open_waiting_chat()
         self.assertEqual(1, len(self.opened))
         self.assertIn("models=chat2rhino", self.opened[0])
-        self.assertIn("b.3dm+is+connected+to+this+chat.", self.opened[0])
+        self.assertIn("b.3dm+is+connected+to+this+chat.%0A", self.opened[0])
         self.assertTrue(self.call("chat-1")["ok"])
         self.assertEqual(10501, self.rhino.calls[-1][1]["target_port"])
         self.assertEqual({"clicks": []}, store.read_json("pending.json"))

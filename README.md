@@ -46,8 +46,10 @@ once HdM Chat has accepted the computer, so only members of the group get it.
 3. Type `Chat2Rhino` in Rhino: the first time a page connects this computer
    to your HdM Chat account (sign in, Connect), then a chat opens.
 
-If Rhino says no Python was found, run any Python script in Rhino 8 once
-(`ScriptEditor`), so that Rhino installs its Python, then try again.
+The connector runs on Rhino 8's own Python or on a Python 3 on PATH (HdM
+office computers have Python 3.12). If Rhino says no Python was found, run any
+Python script in Rhino 8 once (`ScriptEditor`), so that Rhino installs its
+Python, then try again.
 
 ## Use
 
