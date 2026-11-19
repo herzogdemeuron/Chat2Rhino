@@ -38,13 +38,19 @@ Needs Rhino 8. No admin rights. RhinoAI (Yak package `Rhino-MCP-Platform`
 0.4.0, the version Chat2Rhino is tested with) is installed by the first click,
 once HdM Chat has accepted the computer, so only members of the group get it.
 
+At HdM (once the HdM toolbar includes it), DT Update installs this repository at
+`C:\HdM-DT\RhinoToolbarExtensions\Chat2Rhino`, and the Chat2Rhino button is
+the last one on the HdM tab of the HdM toolbar (run DT Update with Rhino
+closed; the button shows at the next Rhino start). Elsewhere:
+
 1. Put this repository at `C:\HdM-DT\RhinoToolbarExtensions\Chat2Rhino`
    (clone it, or unpack a download there).
 2. In Rhino: Options > Aliases, add
    - `Chat2Rhino`: `! _-RunPythonScript "C:\HdM-DT\RhinoToolbarExtensions\Chat2Rhino\toolbar\Chat2Rhino.button\Chat2Rhino_lmb.py"`
    - `Chat2RhinoOff`: `! _-RunPythonScript "C:\HdM-DT\RhinoToolbarExtensions\Chat2Rhino\toolbar\Chat2Rhino.button\Chat2Rhino_rmb.py"`
-3. Type `Chat2Rhino` in Rhino: the first time a page connects this computer
-   to your HdM Chat account (sign in, Connect), then a chat opens.
+
+The first click (or `Chat2Rhino`) opens a page that connects this computer to
+your HdM Chat account (sign in, Connect), then a chat.
 
 The connector runs on Rhino 8's own Python or on a Python 3 on PATH (HdM
 office computers have Python 3.12). If Rhino says no Python was found, run any
@@ -53,10 +59,11 @@ Python, then try again.
 
 ## Use
 
-- `Chat2Rhino` (left click): open a new chat for this Rhino (connecting the
-  computer first, the first time). Press Enter on the line it brings; that
-  chat works in this Rhino.
-- `Chat2RhinoOff` (right click): disconnect this Rhino. RhinoAI's server in
+- Left click (`Chat2Rhino`): open a new chat for this Rhino (connecting the
+  computer first, the first time). The chat starts with "<document> is
+  connected to this chat." and a new line for your request; that chat works
+  in this Rhino.
+- Right click (`Chat2RhinoOff`): disconnect this Rhino. RhinoAI's server in
   it stops, so HdM Chat cannot reach it; its chats come back after a left
   click. Other Rhinos stay connected.
 - Connect again (another account, or after a problem):
