@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+# local state, never committed
+token.json
+status.json
+connector.log*
+.env
