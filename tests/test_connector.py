@@ -183,6 +183,22 @@ class ConnectorTests(StateDir):
             self.connector._job_loop()
         self.assertEqual(1, len(self.rhino.calls))
 
+    def test_connected_only_once_the_relay_accepts_a_pull(self):
+        self.relay.pull.side_effect = [RelayError("pull answered 403", 403, {"error": "not_in_group"})]
+        store.write_status("starting")
+        self.connector._job_loop()
+        self.assertEqual("starting", store.read_status()["state"])
+
+        member = Connector("user@example.com", "cwk_1", "dev1", relay=self.relay, rhino=self.rhino)
+        def pull(worker, pulls=[]):  # accepted twice, then stop
+            pulls.append(worker)
+            if len(pulls) == 2:
+                member.stopping.set()
+        self.relay.pull.side_effect = pull
+        with mock.patch.object(settings, "POLL_SECONDS", 0.01):
+            member._job_loop()
+        self.assertEqual("connected", store.read_status()["state"])
+
     def test_a_stop_request_ends_the_run(self):
         self.relay.pull.return_value = None
         store.request_stop()
@@ -279,6 +295,16 @@ class BindingTests(StateDir):
         store.write_json("pending.json", {"clicks": [{"pid": 2, "started": 6, "document": "b.3dm", "clicked_at": 1}]})
         self.connector.open_waiting_chat()
         self.assertEqual([], self.opened)
+
+    def test_a_recent_click_of_a_running_rhino_keeps_the_connector_waiting(self):
+        bindings = self.connector.bindings
+        store.write_json("pending.json", {"clicks": [{"pid": 2, "started": 6, "clicked_at": int(time.time())}]})
+        self.assertTrue(bindings.click_waiting())
+        self.alive.discard((2, 6))
+        self.assertFalse(bindings.click_waiting())
+        self.alive.add((2, 6))
+        store.write_json("pending.json", {"clicks": [{"pid": 2, "started": 6, "clicked_at": 1}]})
+        self.assertFalse(bindings.click_waiting())
 
     def test_calls_without_a_chat_are_never_bound(self):
         self.rhino.open = {10500: dict(self.TWO[10500])}

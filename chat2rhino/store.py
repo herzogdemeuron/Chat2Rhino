@@ -17,6 +17,7 @@ import json
 import logging
 import logging.handlers
 import os
+import threading
 import time
 
 from . import settings
@@ -38,10 +39,17 @@ def remove(name):
 
 
 def write_json(name, payload):
-    tmp = path(name) + ".tmp"
+    tmp = "{0}.{1}.tmp".format(path(name), threading.get_ident())  # threads write status.json too
     with open(tmp, "w", encoding="utf-8") as handle:
         json.dump(payload, handle, indent=2)
-    os.replace(tmp, path(name))
+    for attempt in range(5):  # on Windows a reader (the button, a virus scanner) may hold the file
+        try:
+            os.replace(tmp, path(name))
+            return
+        except PermissionError:
+            if attempt == 4:
+                raise
+            time.sleep(0.1)
 
 
 def read_json(name):
@@ -124,7 +132,10 @@ def forget_token():
 # -- status and stop request --
 
 def write_status(state, **fields):
-    write_json("status.json", dict(fields, state=state, pid=os.getpid(), updated_at=int(time.time())))
+    try:
+        write_json("status.json", dict(fields, state=state, pid=os.getpid(), updated_at=int(time.time())))
+    except OSError as error:
+        LOG.warning("Writing the status (%s) failed: %s", state, error)
 
 
 def read_status():

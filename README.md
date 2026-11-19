@@ -34,7 +34,9 @@ Rhino
 
 ## Install (test group)
 
-Needs Rhino 8 with RhinoAI (Package Manager: `RhinoAI`). No admin rights.
+Needs Rhino 8. No admin rights. RhinoAI (Yak package `Rhino-MCP-Platform`
+0.4.0, the version Chat2Rhino is tested with) is installed by the first click,
+once HdM Chat has accepted the computer, so only members of the group get it.
 
 1. Put this repository at `C:\HdM-DT\RhinoToolbarExtensions\Chat2Rhino`
    (clone it, or unpack a download there).

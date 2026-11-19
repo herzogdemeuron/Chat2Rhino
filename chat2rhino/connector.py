@@ -11,6 +11,10 @@ Three loops:
 - the main loop: stops on a stop request, a revoked token, or when no Rhino
   has been running for a while.
 
+``status.json`` says "connected" only once the relay accepted a pull, which it
+does only for members of the access group, and says it again after each new
+click; the button waits for that before it installs RhinoAI.
+
 A job the relay delivers again (handing back its result failed) is not run
 again: the result is sent again. On stop, a running job finishes
 and reports first (jobs run at most a few minutes).
@@ -52,6 +56,7 @@ class Connector(object):
         self._current_job = None
         self._results = collections.OrderedDict()  # job id -> result, the last few
         self._beat_seq = 0
+        self._connected_at = 0.0
 
     # -- Rhino --
 
@@ -201,6 +206,7 @@ class Connector(object):
                 LOG.exception("Pull failed")
                 self.stopping.wait(ERROR_WAIT_SECONDS)
                 continue
+            self._accepted()
             if not isinstance(job, dict) or not job.get("job_id"):
                 self.stopping.wait(settings.POLL_SECONDS)
                 continue
@@ -212,10 +218,20 @@ class Connector(object):
             except Exception as error:
                 LOG.warning("Complete failed for %s: %s", job["job_id"], error)
 
+    def _accepted(self):
+        """The relay accepted a pull: say "connected", the first time and after a new click."""
+        try:
+            clicked = os.stat(store.path("pending.json")).st_mtime
+        except OSError:
+            clicked = 0.0
+        if (not self._connected_at or clicked > self._connected_at) and not self.stopping.is_set():
+            self._connected_at = time.time()
+            store.write_status("connected", user_key=self.user_key)
+
     # -- main --
 
     def run(self):
-        store.write_status("connected", user_key=self.user_key)
+        store.write_status("starting", user_key=self.user_key)
         LOG.info("Connector running for %s (pid %s)", self.user_key, os.getpid())
         threads = [threading.Thread(target=target, name=name, daemon=True)
                    for name, target in (("heartbeat", self._heartbeat_loop), ("jobs", self._job_loop))]
@@ -229,7 +245,8 @@ class Connector(object):
                 LOG.info("Stop requested")
                 store.write_status("stopping", user_key=self.user_key)
                 break
-            if self.rhino_running():
+            # A clicked Rhino may still be installing RhinoAI: wait for it too.
+            if self.rhino_running() or self.bindings.click_waiting():
                 rhino_seen = time.time()
             elif time.time() - rhino_seen > settings.RHINO_GONE_SECONDS:
                 LOG.info("No Rhino with RhinoAI's server for %ss; stopping", settings.RHINO_GONE_SECONDS)

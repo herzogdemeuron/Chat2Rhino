@@ -5,12 +5,14 @@ The scripts cannot import the chat2rhino package (it needs Python 3), so the
 state folder layout is repeated here; keep it the same as chat2rhino/store.py.
 """
 
+import glob
 import io
 import json
 import os
 import time
 
 import Rhino
+import scriptcontext
 import System
 
 STATE_DIR = os.environ.get("CHAT2RHINO_STATE_DIR") or os.path.join(
@@ -38,11 +40,24 @@ def status():
     return read_json("status.json")
 
 
-def connector_gave_up(since):
-    """The connector stopped after *since* without connecting (refused, or pairing failed)."""
+def status_since(since):
+    """The connector's state if it wrote one since *since*, else None."""
     current = status()
-    return (current.get("updated_at", 0) >= since - 1
-            and current.get("state") in ("not_in_group", "not_connected"))
+    return current.get("state") if current.get("updated_at", 0) >= since - 1 else None
+
+
+GAVE_UP = ("not_in_group", "not_connected")  # stopped without connecting (refused, or pairing failed)
+
+
+def connector_gave_up(since):
+    return status_since(since) in GAVE_UP
+
+
+def hidden_process(program, arguments):
+    info = System.Diagnostics.ProcessStartInfo(program, arguments)
+    info.UseShellExecute = False
+    info.CreateNoWindow = True
+    return info
 
 
 # -- RhinoAI's server in this Rhino --
@@ -90,6 +105,73 @@ def start_server():
     if server_running():
         return
     Rhino.RhinoApp.RunScript("_-MCPStart _Enter", False)
+
+
+# -- RhinoAI itself: the Yak package, in the version Chat2Rhino is tested with --
+
+RHINOAI_PACKAGE = "Rhino-MCP-Platform"
+RHINOAI_VERSION = "0.4.0"
+_INSTALLING = "chat2rhino_installing_rhinoai"
+
+
+def rhinoai_installed():
+    return Rhino.Commands.Command.LookupCommandId("MCPStart", False) != System.Guid.Empty
+
+
+def _load_rhinoai():
+    """Load the just installed plug-in into this Rhino; False when a restart is needed."""
+    netfx = System.Environment.Version.Major < 5  # Rhino 8 runs on .NET Framework or .NET (Core)
+    found = [rhp for rhp in glob.glob(os.path.join(
+        os.environ.get("APPDATA") or "", "McNeel", "Rhinoceros", "packages", "8.0",
+        RHINOAI_PACKAGE, RHINOAI_VERSION, "*", "*.rhp"))
+        if ("net4" in os.path.basename(os.path.dirname(rhp))) == netfx]
+    try:
+        try:
+            loaded = Rhino.PlugIns.PlugIn.LoadPlugIn(found[0])  # IronPython: (result, id)
+        except TypeError:
+            loaded = Rhino.PlugIns.PlugIn.LoadPlugIn(found[0], System.Guid.Empty)  # pythonnet
+    except Exception:
+        return False
+    return str(loaded[0]) in ("Success", "AlreadyLoaded") and rhinoai_installed()
+
+
+def _install_finished(exit_code):
+    scriptcontext.sticky.pop(_INSTALLING, None)
+    if exit_code != 0:
+        Rhino.RhinoApp.WriteLine("Chat2Rhino: RhinoAI could not be installed. Install it with "
+                                 "PackageManager, then click Chat2Rhino again.")
+    elif _load_rhinoai():
+        start_server()
+    else:
+        Rhino.RhinoApp.WriteLine("Chat2Rhino: RhinoAI is installed. Restart Rhino, then click "
+                                 "Chat2Rhino again.")
+
+
+def install_rhinoai():
+    """Install RhinoAI with Yak (for this Windows user) in the background, then start it.
+
+    Only for a computer the relay has just accepted (status "connected"), so
+    that only members of the access group get RhinoAI.
+    """
+    if scriptcontext.sticky.get(_INSTALLING):
+        return
+    yak = os.path.join(os.path.dirname(System.Diagnostics.Process.GetCurrentProcess().MainModule.FileName),
+                       "Yak.exe")
+    try:
+        process = System.Diagnostics.Process.Start(
+            hidden_process(yak, "install {0} {1}".format(RHINOAI_PACKAGE, RHINOAI_VERSION)))
+    except Exception:
+        _install_finished(None)
+        return
+    scriptcontext.sticky[_INSTALLING] = True
+    Rhino.RhinoApp.WriteLine("Chat2Rhino: installing RhinoAI (once)...")
+
+    def wait(_state):
+        process.WaitForExit()
+        code = process.ExitCode
+        Rhino.RhinoApp.InvokeOnUiThread(System.Action(lambda: _install_finished(code)))
+
+    System.Threading.ThreadPool.QueueUserWorkItem(System.Threading.WaitCallback(wait))
 
 
 def stop_server():

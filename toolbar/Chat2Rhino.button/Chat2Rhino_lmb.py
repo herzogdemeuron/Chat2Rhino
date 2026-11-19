@@ -6,9 +6,10 @@ marks this Rhino as waiting for a chat, and starts the Chat2Rhino connector in
 the background, outside Rhino. The connector hands back the page to open (the
 first time the page that connects this computer, else a new chat), and this
 script opens it, so the browser comes to the front. On a computer that is not
-connected yet, RhinoAI's server starts only once connecting succeeded, so
-someone outside the test group never opens it. Runs in Rhino's IronPython or
-CPython; Python 2.7 syntax on purpose.
+connected yet, or without RhinoAI, RhinoAI's server starts (RhinoAI is
+installed first if needed) only once the relay has accepted this computer, so
+someone outside the test group never gets either. Runs in Rhino's IronPython
+or CPython; Python 2.7 syntax on purpose.
 """
 
 import os
@@ -46,21 +47,20 @@ def find_python():
     return None
 
 
-def connector_running():
-    """The running connector holds this mutex (chat2rhino/__main__.py)."""
-    try:
-        System.Threading.Mutex.OpenExisting("Local\\Chat2Rhino-connector").Dispose()
-        return True
-    except Exception:
-        return False
-
-
 def paired():
     return os.path.exists(os.path.join(common.STATE_DIR, "token.json"))
 
 
+def start_or_install():
+    """The relay has just accepted this computer: start RhinoAI, installing it first if needed."""
+    if common.rhinoai_installed():
+        common.start_server()
+    else:
+        common.install_rhinoai()
+
+
 def start_mcp_once_connected(clicked, give_up=360):
-    """Run MCPStart once the connector reports it is connected.
+    """Start RhinoAI's server once the connector reports the relay accepted it.
 
     A timer checks status.json every 2 s (Rhino may sit in the background
     while the user is in the browser) and hands MCPStart to Rhino's UI thread.
@@ -71,14 +71,17 @@ def start_mcp_once_connected(clicked, give_up=360):
         previous.Dispose()
 
     def check(_state):
-        current = common.status()
-        connected = current.get("updated_at", 0) >= clicked - 1 and current.get("state") == "connected"
-        if connected or common.connector_gave_up(clicked) or time.time() - clicked > give_up:
+        state = common.status_since(clicked)
+        connected, refused = state == "connected", state in common.GAVE_UP
+        if connected or refused or time.time() - clicked > give_up:
             timer = scriptcontext.sticky.pop(TIMER_KEY, None)
             if timer is not None:
                 timer.Dispose()
             if connected:
-                Rhino.RhinoApp.InvokeOnUiThread(System.Action(common.start_server))
+                Rhino.RhinoApp.InvokeOnUiThread(System.Action(start_or_install))
+            elif not refused:  # the connector tells about a refusal itself
+                Rhino.RhinoApp.InvokeOnUiThread(System.Action(lambda: Rhino.RhinoApp.WriteLine(
+                    "Chat2Rhino: HdM Chat did not answer. Click Chat2Rhino again later.")))
 
     scriptcontext.sticky[TIMER_KEY] = System.Threading.Timer(
         System.Threading.TimerCallback(check), None, 2000, 2000)
@@ -109,10 +112,8 @@ def open_handed_page(clicked, wait=6.0):
 
 
 def start_connector(python, root):
-    info = System.Diagnostics.ProcessStartInfo(python, "-m chat2rhino start")
+    info = common.hidden_process(python, "-m chat2rhino start")
     info.WorkingDirectory = root
-    info.UseShellExecute = False
-    info.CreateNoWindow = True
     # Rhino's own Python settings must not leak into the connector's Python.
     for name in ("PYTHONHOME", "PYTHONPATH"):
         if info.EnvironmentVariables.ContainsKey(name):
@@ -127,22 +128,21 @@ def main():
         Rhino.RhinoApp.WriteLine("Chat2Rhino: no Python found. Run any Python script in Rhino 8 "
                                  "once (ScriptEditor), then click Chat2Rhino again.")
         return
-    running = connector_running()
-    current = common.status()
-    # RhinoAI's server opens at once only for a computer that is connected and allowed.
-    if paired() and current.get("state") != "not_in_group":
+    was_paired = paired()
+    connected_before = was_paired and common.status().get("state") != "not_in_group"
+    # At once only for a computer that was allowed before and has RhinoAI;
+    # installing RhinoAI waits for the relay to accept this computer now.
+    if connected_before and common.rhinoai_installed():
         common.start_server()
     else:
         start_mcp_once_connected(clicked)
     common.write_clicks(add_this_rhino=True)
     start_connector(python, os.path.dirname(os.path.dirname(HERE)))  # the repository
-    if running and current.get("state") == "connected":
+    if was_paired:
         Rhino.RhinoApp.WriteLine("Chat2Rhino: a new chat for this Rhino opens in your browser.")
     else:
-        Rhino.RhinoApp.WriteLine("Chat2Rhino: starting. The first time, a page opens in your "
-                                 "browser to connect this computer; then a new chat for this Rhino.")
-    Rhino.RhinoApp.WriteLine("Chat2Rhino: if Rhino says MCPStart is an unknown command, install "
-                             "RhinoAI from the Package Manager.")
+        Rhino.RhinoApp.WriteLine("Chat2Rhino: connect this computer in your browser; "
+                                 "then a chat for this Rhino opens.")
     open_handed_page(clicked)
 
 

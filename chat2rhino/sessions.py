@@ -28,6 +28,7 @@ from .rhinoai import process_started
 
 MAX_BINDINGS = 500
 OPEN_CHAT_SECONDS = 600  # a click older than this opens no chat (a connector started much later)
+CLICK_WAIT_SECONDS = 360  # the connector waits this long for a clicked Rhino (the button's give-up)
 
 
 def _key(entry):
@@ -88,11 +89,12 @@ class Bindings(object):
             entry = self._chats.get(chat)
             return entry["session"] if entry else None
 
-    def _clicks_locked(self):
-        """Clicks waiting for a chat, whose Rhino still runs."""
+    def _clicks_locked(self, max_age=None):
+        """Clicks waiting for a chat (made in the last *max_age* seconds), whose Rhino still runs."""
         data = store.read_json("pending.json")
         clicks = data.get("clicks") if isinstance(data.get("clicks"), list) else []
         return [c for c in clicks if isinstance(c, dict) and c.get("pid")
+                and (max_age is None or time.time() - c.get("clicked_at", 0) <= max_age)
                 and self._alive(c["pid"], c.get("started", 0))]
 
     def _take_click_locked(self, session):
@@ -102,6 +104,11 @@ class Bindings(object):
         left = [c for c in clicks if isinstance(c, dict) and _key(c) != _key(session)]
         if len(left) != len(clicks):
             store.write_json("pending.json", {"clicks": left})
+
+    def click_waiting(self):
+        """A Rhino clicked a few minutes ago still runs (it may still be installing RhinoAI)."""
+        with self._lock:
+            return bool(self._clicks_locked(CLICK_WAIT_SECONDS))
 
     def chat_opened(self, click):
         """*click* got its chat elsewhere (the connect page opens it after pairing)."""
@@ -118,8 +125,7 @@ class Bindings(object):
             return []  # read only when the button wrote a new click
         self._click_mtime = mtime
         with self._lock:
-            new = [c for c in self._clicks_locked() if _click_id(c) not in self._opened
-                   and time.time() - c.get("clicked_at", 0) <= OPEN_CHAT_SECONDS]
+            new = [c for c in self._clicks_locked(OPEN_CHAT_SECONDS) if _click_id(c) not in self._opened]
             self._opened.update(_click_id(c) for c in new)
             return [c.get("document") or "Untitled" for c in new]
 

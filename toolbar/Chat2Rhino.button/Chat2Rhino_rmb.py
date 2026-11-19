@@ -28,9 +28,8 @@ except NameError:
 common.write_clicks(add_this_rhino=False)
 stopped = common.stop_server()
 if stopped == "stopped":
-    Rhino.RhinoApp.WriteLine("Chat2Rhino: this Rhino is disconnected. A left click connects it again.")
+    Rhino.RhinoApp.WriteLine("Chat2Rhino: this Rhino is disconnected.")
 elif stopped == "not_running":
     Rhino.RhinoApp.WriteLine("Chat2Rhino: this Rhino is not connected.")
 else:
-    Rhino.RhinoApp.WriteLine("Chat2Rhino: could not disconnect this Rhino from here; close this Rhino "
-                             "window to disconnect it.")
+    Rhino.RhinoApp.WriteLine("Chat2Rhino: could not disconnect; close this Rhino to disconnect it.")
